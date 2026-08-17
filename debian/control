@@ -45,7 +45,6 @@ Depends:
  traceroute,
  vplane-config (>= 2.96),
  vyatta-op,
- vyatta-ping,
  ${misc:Depends},
  ${shlibs:Depends}
 Replaces: vyatta-op (<< 1.0)

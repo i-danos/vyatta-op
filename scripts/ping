@@ -39,7 +39,32 @@ use strict;
 use warnings;
 use NetAddr::IP;
 use Data::Validate::IP qw(is_linklocal_ipv6);
+use Vyatta::Interface;
 use feature ":5.10";
+
+# A loopback interface (lo0, lo1, ...) named as the outgoing interface means
+# "source the packet from this interface's address", not "send it out of this
+# device" -- binding the socket to the loopback with SO_BINDTODEVICE would
+# stop the packet ever reaching the real egress interface.
+#
+# iputils' -I accepts either a device name or a source address, so resolve the
+# loopback's address here and hand that over instead. This used to rely on a
+# DANOS-only -Z option carried as an out-of-tree patch against iputils; doing
+# the lookup here lets us track Debian's iputils unmodified.
+sub loopback_source_addr {
+    my ( $ifname, $family ) = @_;
+
+    my $intf = new Vyatta::Interface($ifname);
+    die "ping: unknown interface $ifname\n"
+      unless defined($intf);
+
+    foreach my $addr ( $intf->address($family) ) {
+        $addr =~ s|/\d+$||;
+        return $addr;
+    }
+
+    die "ping: no IPv$family address configured on $ifname\n";
+}
 
 # Table for translating options to arguments
 my %options = (
@@ -136,10 +161,8 @@ while ( my $arg = shift @$args ) {
             $optarg = $optarg - $ip_hlen - $icmp_hlen;
         }
         if ( "I:" eq $pingarg ) {
-            if ( $optarg =~ /^lo[0-9]/ ) {
-                pop @cmdargs;
-                push @cmdargs, "-Z";
-            }
+            $optarg = loopback_source_addr( $optarg, $ip->version )
+              if ( $optarg =~ /^lo[0-9]/ );
             $int_spcfd = 1;
         }
         if ( "Q:" eq $pingarg ) {
@@ -160,7 +183,7 @@ if ( $ip6_ll && !$int_spcfd ) {
       if ( $out_iface eq "" );
 
     if ( $out_iface =~ /^lo[0-9]/ ) {
-        push @cmdargs, "-Z", $out_iface;
+        push @cmdargs, "-I", loopback_source_addr( $out_iface, 6 );
     } else {
         push @cmdargs, "-I", $out_iface;
     }

@@ -47,10 +47,14 @@ static json_t *address_json(int family, const void *addr, unsigned int prefixlen
 
 	inet_ntop(family, addr, ip, sizeof(ip));
 	if (prefixlen && host_len != prefixlen) {
-		char buf[4];
+		/* Sized for the widest value the unsigned argument can take, so
+		 * the prefix is never silently truncated -- buf[4] used to cut
+		 * "/112" down to "/11". strncat() is bounded by the space left
+		 * in ip, not by the size of buf.
+		 */
+		char buf[sizeof("/4294967295")];
 		snprintf(buf, sizeof(buf), "/%u", prefixlen);
-		strncat(ip, buf, sizeof(buf) - 1);
-		ip[sizeof(ip) - 1] = '\0';
+		strncat(ip, buf, sizeof(ip) - strlen(ip) - 1);
 	}
 	return json_string(ip);
 }
